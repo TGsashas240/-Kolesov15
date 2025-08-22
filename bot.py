@@ -301,16 +301,18 @@ def home():
 def webhook():
     """Webhook endpoint для получения обновлений от Telegram"""
     try:
-        json_str = request.get_data().decode('utf-8')
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        
-        # Обрабатываем обновление асинхронно
-        asyncio.create_task(telegram_app.process_update(update))
-        
-        return 'OK'
+
+        # Отправляем задачу в event loop телеграм-бота
+        asyncio.run_coroutine_threadsafe(
+            telegram_app.process_update(update),
+            telegram_app.loop
+        )
+
+        return "OK"
     except Exception as e:
         logger.error(f"Ошибка при обработке webhook: {e}")
-        return 'ERROR', 500
+        return "ERROR", 500
 
 async def setup_telegram_app():
     """Настройка Telegram приложения"""
