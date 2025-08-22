@@ -4,10 +4,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
 import asyncio
-import threading
-from werkzeug.serving import run_simple
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -37,10 +34,6 @@ logger.info(f"ADMIN_ID: {ADMIN_ID}")
 
 # Путь к файлу для хранения chat_id групп и каналов
 CHATS_FILE = 'chats.json'
-
-# Flask приложение для webhook
-app = Flask(__name__)
-telegram_app = None
 
 def load_chats():
     """Загружаем список чатов из файла"""
@@ -78,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # Приветственный текст
     welcome_text = (
-        "🌟 Всем привет! 🌟\n\n"
+        "🌟 Всем привет!  \n\n"
         "Наш новый чат услуг приветствует тебя! "
         "Мы рады будем, если ты будешь находиться в нём.\n\n"
         "✨ Выбери нужный раздел:\n\n"
@@ -303,42 +296,17 @@ telegram_app.add_handler(CommandHandler("rek", rek_command))
 telegram_app.add_handler(CallbackQueryHandler(button_callback))
 telegram_app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
-@app.route('/')
-def home():
-    """Health check endpoint"""
-    return "🤖 Рай Люкс Бот работает! ✅"
-
-@app.route('/webhook', methods=['POST'])
-async def webhook_handler():
-    """Webhook endpoint для получения обновлений от Telegram"""
-    try:
-        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        await telegram_app.process_update(update)
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        logger.error(f"Ошибка при обработке webhook: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-async def setup_webhook():
-    """Установка вебхука"""
-    webhook_url = f"{WEBHOOK_URL}/webhook"
-    await telegram_app.bot.set_webhook(url=webhook_url)
-    logger.info(f"📡 Webhook установлен: {webhook_url}")
-
 if __name__ == '__main__':
-    # Если есть WEBHOOK_URL, запускаем Flask-приложение для обработки вебхуков
+    # Если есть WEBHOOK_URL, запускаем вебхук
     if WEBHOOK_URL:
-        # Запускаем асинхронную функцию установки вебхука
-        asyncio.run(setup_webhook())
-        logger.info(f"🌐 Запуск Flask сервера на порту {PORT}...")
-        # Запускаем Flask в отдельном потоке
-        run_simple(
-            hostname='0.0.0.0',
+        logger.info("🌐 Запуск в режиме webhook...")
+        telegram_app.run_webhook(
+            listen='0.0.0.0',
             port=PORT,
-            application=app,
-            threaded=True,
-            use_reloader=False,
-            use_debugger=True
+            url_path='',
+            webhook_url=f"{WEBHOOK_URL}/webhook",
+            on_startup=None, # on_startup можно использовать для дополнительных настроек, например, для установки команд бота.
+            on_shutdown=None
         )
     else:
         # Режим polling для локального тестирования
