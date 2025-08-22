@@ -4,7 +4,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify # Оставил импорты, хотя Flask больше не используется напрямую
 import asyncio
 import threading
 
@@ -36,13 +36,6 @@ logger.info(f"ADMIN_ID: {ADMIN_ID}")
 
 # Путь к файлу для хранения chat_id групп и каналов
 CHATS_FILE = 'chats.json'
-
-# Flask приложение для webhook
-app = Flask(__name__)
-telegram_app = None
-
-# Флаг для отслеживания инициализации
-bot_initialized = False
 
 def load_chats():
     """Загружаем список чатов из файла"""
@@ -295,48 +288,32 @@ async def rek_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             parse_mode='HTML'
         )
 
-# Создаем приложение Telegram
-telegram_app = Application.builder().token(BOT_TOKEN).build()
+def main() -> None:
+    """Запускаем бота"""
+    # Создаем приложение Telegram
+    application = Application.builder().token(BOT_TOKEN).build()
 
-# Добавляем обработчики команд
-telegram_app.add_handler(CommandHandler("start", start))
-telegram_app.add_handler(CommandHandler("help", help_command))
-telegram_app.add_handler(CommandHandler("rek", rek_command))
-telegram_app.add_handler(CallbackQueryHandler(button_callback))
-telegram_app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
-
-@app.route('/')
-def home():
-    """Health check endpoint"""
-    return "🤖 Рай Люкс Бот работает! ✅"
-
-@app.route('/webhook', methods=['POST'])
-async def webhook_handler():
-    """Webhook endpoint для получения обновлений от Telegram"""
-    global bot_initialized
-    if not bot_initialized:
-        await telegram_app.initialize()
-        webhook_url = f"{WEBHOOK_URL}/webhook"
-        logger.info(f"Attempting to set webhook to: {webhook_url}")
-        await telegram_app.bot.set_webhook(webhook_url)
-        bot_initialized = True
-        logger.info(f"📡 Webhook установлен: {webhook_url}")
+    # Добавляем обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("rek", rek_command))
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
     
-    try:
-        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        await telegram_app.process_update(update)
-        return jsonify({'status': 'ok'})
-    except Exception as e:
-        logger.error(f"Ошибка при обработке webhook: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
-if __name__ == '__main__':
-    # Эта часть кода не будет выполняться на Railway с Gunicorn.
-    # Она нужна только для локального тестирования.
     if WEBHOOK_URL:
-        # Установка вебхука происходит при первом запросе
-        logger.info(f"🌐 Запуск Flask сервера на порту {PORT}...")
+        # Режим вебхука для продакшена на Railway
+        logger.info("🌐 Запуск в режиме вебхука...")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="webhook",
+            webhook_url=f"{WEBHOOK_URL}/webhook",
+        )
     else:
         # Режим polling для локального тестирования
         logger.info("🔄 Запуск в режиме polling...")
-        telegram_app.run_polling()
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == '__main__':
+    main()
