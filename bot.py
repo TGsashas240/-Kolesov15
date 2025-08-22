@@ -41,6 +41,9 @@ CHATS_FILE = 'chats.json'
 app = Flask(__name__)
 telegram_app = None
 
+# Флаг для отслеживания инициализации
+bot_initialized = False
+
 def load_chats():
     """Загружаем список чатов из файла"""
     try:
@@ -291,16 +294,9 @@ async def rek_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"❌ Ошибка при выполнении рассылки: {str(e)}",
             parse_mode='HTML'
         )
-    
-async def setup_webhook():
-    """Установка вебхука"""
-    webhook_url = f"{WEBHOOK_URL}/webhook"
-    await telegram_app.bot.set_webhook(url=webhook_url)
-    logger.info(f"📡 Webhook установлен: {webhook_url}")
 
-# Создаем приложение Telegram и инициализируем его
+# Создаем приложение Telegram
 telegram_app = Application.builder().token(BOT_TOKEN).build()
-telegram_app.initialize()
 
 # Добавляем обработчики команд
 telegram_app.add_handler(CommandHandler("start", start))
@@ -317,6 +313,13 @@ def home():
 @app.route('/webhook', methods=['POST'])
 async def webhook_handler():
     """Webhook endpoint для получения обновлений от Telegram"""
+    global bot_initialized
+    if not bot_initialized:
+        await telegram_app.initialize()
+        await telegram_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+        bot_initialized = True
+        logger.info(f"📡 Webhook установлен: {WEBHOOK_URL}/webhook")
+    
     try:
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
         await telegram_app.process_update(update)
@@ -329,10 +332,7 @@ if __name__ == '__main__':
     # Эта часть кода не будет выполняться на Railway с Gunicorn.
     # Она нужна только для локального тестирования.
     if WEBHOOK_URL:
-        # Установка вебхука должна происходить один раз.
-        # В Gunicorn это можно сделать через скрипт или вручную.
-        # Здесь просто заглушка для локального тестирования.
-        asyncio.run(telegram_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook"))
+        # Установка вебхука происходит при первом запросе
         logger.info(f"🌐 Запуск Flask сервера на порту {PORT}...")
     else:
         # Режим polling для локального тестирования
