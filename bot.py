@@ -303,7 +303,7 @@ def webhook():
     try:
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
 
-        # Отправляем задачу в event loop телеграм-бота
+        # Отправляем задачу в event loop, где запущен бот
         asyncio.run_coroutine_threadsafe(
             telegram_app.process_update(update),
             telegram_app.loop
