@@ -1,4 +1,2 @@
-python-telegram-bot
+python-telegram-bot[webhooks]
 python-dotenv
-flask[async]
-gunicorn
