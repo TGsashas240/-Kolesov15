@@ -4,9 +4,10 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from dotenv import load_dotenv
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import asyncio
 import threading
+from werkzeug.serving import run_simple
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
@@ -21,9 +22,9 @@ logger = logging.getLogger(__name__)
 # Получаем переменные окружения
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 WELCOME_IMAGE_URL = os.getenv('WELCOME_IMAGE_URL', 'https://i.ibb.co/tM36RH31/photo-2025-08-22-11-07-10.jpg')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # https://your-app.railway.app/webhook
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 PORT = int(os.getenv('PORT', 8000))
-ADMIN_ID = int(os.getenv('ADMIN_ID', 0))  # ID администратора
+ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 
 if not BOT_TOKEN:
     logger.error("BOT_TOKEN не найден в переменных окружения!")
@@ -292,90 +293,54 @@ async def rek_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             parse_mode='HTML'
         )
 
+# Создаем приложение Telegram
+telegram_app = Application.builder().token(BOT_TOKEN).build()
+
+# Добавляем обработчики команд
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("help", help_command))
+telegram_app.add_handler(CommandHandler("rek", rek_command))
+telegram_app.add_handler(CallbackQueryHandler(button_callback))
+telegram_app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
+
 @app.route('/')
 def home():
     """Health check endpoint"""
     return "🤖 Рай Люкс Бот работает! ✅"
 
 @app.route('/webhook', methods=['POST'])
-def webhook():
+async def webhook_handler():
     """Webhook endpoint для получения обновлений от Telegram"""
     try:
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-
-        # Отправляем задачу в event loop, где запущен бот
-        asyncio.run_coroutine_threadsafe(
-            telegram_app.process_update(update),
-            telegram_app.loop
-        )
-
-        return "OK"
+        await telegram_app.process_update(update)
+        return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Ошибка при обработке webhook: {e}")
-        return "ERROR", 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
-async def setup_telegram_app():
-    """Настройка Telegram приложения"""
-    global telegram_app
-    
-    # Создаем приложение с увеличенным пулом соединений
-    telegram_app = Application.builder().token(BOT_TOKEN).pool_timeout(10.0).connection_pool_size(20).build()
-    
-    # Добавляем обработчики команд
-    telegram_app.add_handler(CommandHandler("start", start))
-    telegram_app.add_handler(CommandHandler("help", help_command))
-    telegram_app.add_handler(CommandHandler("rek", rek_command))
-    telegram_app.add_handler(CallbackQueryHandler(button_callback))
-    telegram_app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
-    
-    # Инициализируем приложение
-    await telegram_app.initialize()
-    
-    # Устанавливаем webhook если URL указан
+async def setup_webhook():
+    """Установка вебхука"""
+    webhook_url = f"{WEBHOOK_URL}/webhook"
+    await telegram_app.bot.set_webhook(url=webhook_url)
+    logger.info(f"📡 Webhook установлен: {webhook_url}")
+
+if __name__ == '__main__':
+    # Если есть WEBHOOK_URL, запускаем Flask-приложение для обработки вебхуков
     if WEBHOOK_URL:
-        webhook_url = f"{WEBHOOK_URL}/webhook"
-        await telegram_app.bot.set_webhook(url=webhook_url)
-        logger.info(f"📡 Webhook установлен: {webhook_url}")
-    else:
-        logger.warning("⚠️ WEBHOOK_URL не установлен, используется polling режим")
-        # Запускаем polling в отдельном потоке
-        await telegram_app.start()
-        await telegram_app.updater.start_polling()
-    
-    logger.info("🚀 Telegram приложение запущено!")
-
-def run_flask():
-    """Запуск Flask сервера"""
-    app.run(host='0.0.0.0', port=PORT)
-
-async def main():
-    """Главная функция"""
-    # Настраиваем Telegram приложение
-    await setup_telegram_app()
-    
-    # Если есть WEBHOOK_URL, запускаем Flask сервер
-    if WEBHOOK_URL:
+        # Запускаем асинхронную функцию установки вебхука
+        asyncio.run(setup_webhook())
         logger.info(f"🌐 Запуск Flask сервера на порту {PORT}...")
         # Запускаем Flask в отдельном потоке
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        flask_thread.start()
-        
-        # Держим главный поток живым
-        try:
-            while True:
-                await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("🛑 Остановка бота...")
-            await telegram_app.stop()
+        run_simple(
+            hostname='0.0.0.0',
+            port=PORT,
+            application=app,
+            threaded=True,
+            use_reloader=False,
+            use_debugger=True
+        )
     else:
         # Режим polling для локального тестирования
         logger.info("🔄 Запуск в режиме polling...")
-        try:
-            while True:
-                await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("🛑 Остановка бота...")
-            await telegram_app.stop()
-
-if __name__ == '__main__':
-    asyncio.run(main())
+        telegram_app.run_polling()
