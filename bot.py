@@ -4,7 +4,6 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify # Оставил импорты, хотя Flask больше не используется напрямую
 import asyncio
 import threading
 
@@ -313,7 +312,6 @@ def main() -> None:
         # Режим polling для локального тестирования
         logger.info("🔄 Запуск в режиме polling...")
         application.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == '__main__':
     main()
