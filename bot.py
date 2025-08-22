@@ -316,9 +316,11 @@ async def webhook_handler():
     global bot_initialized
     if not bot_initialized:
         await telegram_app.initialize()
-        await telegram_app.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+        webhook_url = f"{WEBHOOK_URL}/webhook"
+        logger.info(f"Attempting to set webhook to: {webhook_url}")
+        await telegram_app.bot.set_webhook(webhook_url)
         bot_initialized = True
-        logger.info(f"📡 Webhook установлен: {WEBHOOK_URL}/webhook")
+        logger.info(f"📡 Webhook установлен: {webhook_url}")
     
     try:
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
