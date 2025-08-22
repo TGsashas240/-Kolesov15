@@ -1,13 +1,13 @@
-i logging
+import os
+import json
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 import asyncio
 import threading
-mport os
-import json
-import
+
 # Загружаем переменные окружения из .env файла
 load_dotenv()
 
